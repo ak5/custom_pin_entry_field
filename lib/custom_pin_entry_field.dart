@@ -19,7 +19,7 @@ class CustomPinEntryField extends StatefulWidget {
       {this.lastPin,
       this.decoration,
       this.fields = 4,
-      this.onSubmit,
+      required this.onSubmit,
       this.fieldWidth = 40.0,
       this.textStyle = const TextStyle(
         fontWeight: FontWeight.bold,
@@ -91,6 +91,20 @@ class CustomPinEntryFieldState extends State<CustomPinEntryField> {
     _pin.clear();
   }
 
+  void _setField(int i, String value) {
+    _textControllers[i]!.text = value;
+    _pin[i] = value.isEmpty ? '' : value[0];
+  }
+
+  void _unsetField(int i) => _setField(i, '');
+
+  void _submit() {
+    if (_pin.every((String? digit) => digit != null && digit != '')) {
+      _focusNodes.forEach((n) => n!.unfocus());
+      widget.onSubmit(_pin.join());
+    }
+  }
+
   Widget buildTextField(int i, BuildContext context) {
     if (_focusNodes[i] == null) {
       _focusNodes[i] =
@@ -100,16 +114,15 @@ class CustomPinEntryFieldState extends State<CustomPinEntryField> {
           if (_textControllers[i]!.text.isEmpty) {
             if (i > 0) {
               FocusScope.of(context).requestFocus(_focusNodes[i - 1]);
-              _textControllers[i - 1]!.text = '';
+              _unsetField(i - 1);
             }
-          } else {
-            _textControllers[i]!.text = '';
-          }
-          return KeyEventResult.handled;
+          } else
+            _unsetField(i);
         }
         return KeyEventResult.ignored;
       });
     }
+
     if (_textControllers[i] == null) {
       _textControllers[i] = TextEditingController();
       if (widget.lastPin != null) {
@@ -117,17 +130,35 @@ class CustomPinEntryFieldState extends State<CustomPinEntryField> {
       }
     }
 
-    _focusNodes[i]!.addListener(() {
-      if (_focusNodes[i]!.hasFocus) {}
+    _textControllers[i]!.addListener(() {
+      // move focus to next field
+      if (_textControllers[i]!.text.length > 0 && i + 1 < widget.fields) {
+        FocusScope.of(context).requestFocus(_focusNodes[i + 1]);
+      }
+      // handle paste/multichar input
+      if (_textControllers[i]!.text.length > 1) {
+        String rest = _textControllers[i]!.text.substring(1);
+        _setField(i, _textControllers[i]!.text[0]);
+        if (i < widget.fields) {
+          FocusScope.of(context).requestFocus(_focusNodes[i + 1]);
+          if (rest.isNotEmpty) {
+            _setField(i + 1, rest);
+          }
+        }
+      }
     });
 
-    final String lastDigit = _textControllers[i]!.text;
+    _focusNodes[i]!.addListener(() {
+      // when selecting a field, erase it
+      if (_focusNodes[i]!.hasFocus) _unsetField(i);
+    });
 
     return Container(
       height: widget.fieldWidth,
       width: widget.fieldWidth,
       margin: EdgeInsets.only(right: 10.0),
       child: TextField(
+        maxLength: i + 1 == widget.fields ? 1 : null,
         autofocus: true,
         showCursor: widget.showCursor,
         controller: _textControllers[i],
@@ -165,32 +196,10 @@ class CustomPinEntryFieldState extends State<CustomPinEntryField> {
               ),
             ),
         onChanged: (String str) {
-          setState(() {
-            _pin[i] = str;
-          });
-          if (i + 1 != widget.fields) {
-            _focusNodes[i]!.unfocus();
-            if (lastDigit != null && _pin[i] == '') {
-              if (i > 0)
-                FocusScope.of(context).requestFocus(_focusNodes[i - 1]);
-            } else {
-              FocusScope.of(context).requestFocus(_focusNodes[i + 1]);
-            }
-          } else {
-            _focusNodes[i]!.unfocus();
-            if (lastDigit != null && _pin[i] == '') {
-              FocusScope.of(context).requestFocus(_focusNodes[i - 1]);
-            }
-          }
-          if (_pin.every((String? digit) => digit != null && digit != '')) {
-            widget.onSubmit(_pin.join());
-          }
+          _pin[i] = str;
+          _submit();
         },
-        onSubmitted: (String str) {
-          if (_pin.every((String? digit) => digit != null && digit != '')) {
-            widget.onSubmit(_pin.join());
-          }
-        },
+        onSubmitted: (String str) => _submit(),
       ),
     );
   }
